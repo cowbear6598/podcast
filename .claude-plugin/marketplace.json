@@ -1,0 +1,10 @@
+{
+  "name": "podcast",
+  "owner": { "name": "cowbear6598" },
+  "plugins": [
+    {
+      "name": "podcast",
+      "source": "."
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+podcast
+Copyright 2026 cowbear6598
+
+This product includes software developed by cowbear6598
+(https://github.com/cowbear6598/podcast).
+
+Any redistribution, in source or binary form, must retain this NOTICE
+file and credit the original author cowbear6598.
+
+---
+
+This product depends on the following third-party software at runtime:
+
+- edge-tts (https://github.com/rany2/edge-tts) — Licensed under GPL v3
+  Used as a runtime dependency to call Microsoft Edge's online TTS service.
