@@ -17,11 +17,14 @@ from pathlib import Path
 import edge_tts
 
 VOICES = {
-    "曉臻": "zh-TW-HsiaoChenNeural",
-    "雲哲": "zh-TW-YunJheNeural",
+    # 每個角色用 list：主聲音失敗時依序 fallback
+    "曉臻": ["zh-TW-HsiaoChenNeural", "zh-CN-XiaoxiaoNeural", "zh-HK-HiuGaaiNeural"],
+    "雲哲": ["zh-TW-YunJheNeural", "zh-CN-YunxiNeural", "zh-HK-WanLungNeural"],
 }
 PAUSE_SECONDS = 0.25
 RATE = "-10%"  # 語速：-20% 更慢 / +0% 正常 / +10% 更快（注意：只接受兩位數）
+RETRY_ATTEMPTS = 3       # 同一聲音的重試次數
+RETRY_DELAY = 1.5        # 每次重試前等待秒數
 
 
 def parse_script(path: Path) -> list[tuple[str, str]]:
@@ -38,8 +41,7 @@ def parse_script(path: Path) -> list[tuple[str, str]]:
     return segments
 
 
-async def synthesize(speaker: str, line: str, out_path: Path) -> None:
-    voice = VOICES[speaker]
+async def _tts_once(voice: str, line: str, out_path: Path) -> None:
     raw = out_path.with_suffix(".raw.mp3")
     communicate = edge_tts.Communicate(line, voice, rate=RATE)
     await communicate.save(str(raw))
@@ -54,13 +56,65 @@ async def synthesize(speaker: str, line: str, out_path: Path) -> None:
     raw.unlink()
 
 
+async def _synth_with_retry(voice: str, line: str, out_path: Path) -> bool:
+    """用指定 voice 合成，含重試。成功回傳 True，全部失敗回傳 False。"""
+    for attempt in range(1, RETRY_ATTEMPTS + 1):
+        try:
+            await _tts_once(voice, line, out_path)
+            return True
+        except edge_tts.exceptions.NoAudioReceived:
+            if attempt < RETRY_ATTEMPTS:
+                print(f"      ↳ NoAudioReceived，{RETRY_DELAY}s 後重試 ({attempt}/{RETRY_ATTEMPTS}) voice={voice}")
+                await asyncio.sleep(RETRY_DELAY)
+    return False
+
+
+def _voice_candidates(speaker: str) -> list[str]:
+    voices = VOICES[speaker]
+    return [voices] if isinstance(voices, str) else list(voices)
+
+
+async def synth_speaker_all(
+    speaker: str, voice: str, speaker_segments: list[tuple[int, str]], tmp: Path
+) -> dict[int, Path] | None:
+    """用同一個聲音把該角色的所有段落合成完；任一段失敗就回傳 None 讓外層 fallback。"""
+    results: dict[int, Path] = {}
+    for idx, line in speaker_segments:
+        seg_file = tmp / f"seg_{idx:03d}_{voice}.mp3"
+        if not await _synth_with_retry(voice, line, seg_file):
+            return None
+        results[idx] = seg_file
+    return results
+
+
 async def main_async(script_path: Path, output_path: Path) -> None:
     segments = parse_script(script_path)
     print(f"解析到 {len(segments)} 段台詞")
 
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp = Path(tmpdir)
-        parts: list[Path] = []
+
+        # 按角色分組段落
+        by_speaker: dict[str, list[tuple[int, str]]] = {}
+        for i, (speaker, line) in enumerate(segments):
+            by_speaker.setdefault(speaker, []).append((i, line))
+
+        # 每個角色依序嘗試候選聲音，某聲音任一段失敗就整個角色換下一個聲音重做
+        seg_files: dict[int, Path] = {}
+        for speaker, speaker_segs in by_speaker.items():
+            candidates = _voice_candidates(speaker)
+            for v_idx, voice in enumerate(candidates):
+                print(f"▶ {speaker} 用 {voice} 生成 {len(speaker_segs)} 段")
+                result = await synth_speaker_all(speaker, voice, speaker_segs, tmp)
+                if result is not None:
+                    if v_idx > 0:
+                        print(f"  ✓ fallback 成功（跳過主聲音 {candidates[0]}）")
+                    seg_files.update(result)
+                    break
+                if v_idx < len(candidates) - 1:
+                    print(f"  ⚠ {voice} 有段落失敗，整個 {speaker} 改用下一個聲音 {candidates[v_idx + 1]} 重做")
+                else:
+                    raise RuntimeError(f"{speaker} 所有聲音都失敗：{candidates}")
 
         pause_file = None
         if PAUSE_SECONDS > 0:
@@ -72,11 +126,9 @@ async def main_async(script_path: Path, output_path: Path) -> None:
                 check=True, capture_output=True,
             )
 
-        for i, (speaker, line) in enumerate(segments):
-            seg_file = tmp / f"seg_{i:03d}.mp3"
-            print(f"  [{i+1}/{len(segments)}] {speaker}: {line[:30]}{'...' if len(line) > 30 else ''}")
-            await synthesize(speaker, line, seg_file)
-            parts.append(seg_file)
+        parts: list[Path] = []
+        for i in range(len(segments)):
+            parts.append(seg_files[i])
             if pause_file and i < len(segments) - 1:
                 parts.append(pause_file)
 
