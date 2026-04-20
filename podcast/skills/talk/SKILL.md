@@ -1,5 +1,5 @@
 ---
-name: content
+name: talk
 description: 把文章改寫成雙人對談 Podcast 腳本。當使用者提供文章、貼文、技術新聞並說「幫我變對話」「轉成 podcast 腳本」「改成兩人對談」時觸發。
 ---
 

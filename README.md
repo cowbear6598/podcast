@@ -1,6 +1,6 @@
 # podcast
 
-把文章轉成雙人對談 Podcast 音檔的 Claude Code plugin。
+把文章轉成 Podcast 音檔的 Claude Code plugin，支援雙人對談與說書人獨白兩種模式。
 
 ## Install
 
@@ -17,13 +17,18 @@
 | Skill | 用途 |
 |-------|------|
 | `podcast:setup` | 檢查 ffmpeg / edge-tts 安裝環境 |
-| `podcast:content` | 把文章改寫成 `[曉臻]/[雲哲]` 對話腳本 |
-| `podcast:audio` | 把對話腳本合成成雙人 mp3 |
+| `podcast:talk` | 把文章改寫成 `[曉臻]/[雲哲]` 對話腳本 |
+| `podcast:tell` | 把文章改寫成 `[說書人]` 獨白腳本 |
+| `podcast:audio` | 把腳本合成 mp3，支援雙人對談與說書人兩種格式 |
 
 ## Workflow
 
 ```
-文章 → podcast:content → 對話腳本.txt → podcast:audio → mp3
+# 雙人對談
+文章 → podcast:talk → 對話腳本.txt → podcast:audio → mp3
+
+# 說書人獨白
+文章 → podcast:tell → 說書腳本.txt → podcast:audio → mp3
 ```
 
 ## License

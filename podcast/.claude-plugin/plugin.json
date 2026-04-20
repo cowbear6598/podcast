@@ -1,5 +1,5 @@
 {
   "name": "podcast",
-  "version": "1.1.0",
-  "description": "把文章轉成雙人對談 Podcast 音檔"
+  "version": "1.1.1",
+  "description": "把文章改寫成雙人 Podcast 或說書人獨白音檔"
 }
