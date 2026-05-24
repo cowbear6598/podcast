@@ -8,6 +8,7 @@
 """
 import argparse
 import asyncio
+import json
 import re
 import sys
 import tempfile
@@ -17,7 +18,9 @@ from _core import (
     PAUSE_SECONDS,
     _synth_with_retry,
     concat_mp3,
+    default_timing_path,
     make_pause_file,
+    probe_duration,
 )
 
 VOICES = {
@@ -60,7 +63,43 @@ async def synth_all(voice: str, lines: list[str], tmp: Path) -> list[Path] | Non
     return results
 
 
-async def main_async(script_path: Path, output_path: Path) -> None:
+def build_timing(
+    script_path: Path,
+    output_path: Path,
+    segments: list[str],
+    seg_files: list[Path],
+    audio_duration: float,
+) -> dict:
+    timeline = []
+    cursor = 0.0
+    for idx, (line, seg_file) in enumerate(zip(segments, seg_files)):
+        duration = probe_duration(seg_file)
+        start = cursor
+        end = start + duration
+        timeline.append(
+            {
+                "index": idx,
+                "start": round(start, 3),
+                "end": round(end, 3),
+                "speaker": "說書人",
+                "text": line,
+            }
+        )
+        cursor = end
+        if idx < len(seg_files) - 1:
+            cursor += PAUSE_SECONDS
+
+    return {
+        "script": str(script_path),
+        "audio": str(output_path),
+        "duration": round(audio_duration, 3),
+        "timingSource": "tts-segment",
+        "pauseSeconds": PAUSE_SECONDS,
+        "segments": timeline,
+    }
+
+
+async def main_async(script_path: Path, output_path: Path, timing_path: Path) -> None:
     segments = parse_script(script_path)
     print(f"解析到 {len(segments)} 段說書人台詞")
 
@@ -92,9 +131,16 @@ async def main_async(script_path: Path, output_path: Path) -> None:
                 parts.append(pause_file)
 
         concat_mp3(parts, output_path)
+        audio_duration = probe_duration(output_path)
+        timing = build_timing(script_path, output_path, segments, seg_files, audio_duration)
+        timing_path.write_text(
+            json.dumps(timing, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
 
     size_kb = output_path.stat().st_size // 1024
     print(f"\n完成：{output_path} ({size_kb} KB)")
+    print(f"Timing：{timing_path}")
 
 
 def main() -> None:
@@ -103,12 +149,14 @@ def main() -> None:
     )
     ap.add_argument("script", type=Path, help="說書人腳本檔案 (.txt)")
     ap.add_argument("-o", "--output", type=Path, default=Path("output.mp3"))
+    ap.add_argument("--timing", type=Path, help="Timing JSON 輸出路徑，預設由 mp3 檔名推導")
     args = ap.parse_args()
 
     if not args.script.exists():
         sys.exit(f"找不到檔案：{args.script}")
 
-    asyncio.run(main_async(args.script, args.output))
+    timing_path = args.timing or default_timing_path(args.output)
+    asyncio.run(main_async(args.script, args.output, timing_path))
 
 
 if __name__ == "__main__":

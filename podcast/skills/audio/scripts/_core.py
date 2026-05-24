@@ -1,5 +1,5 @@
 """
-共用底層模組：TTS 合成、ffmpeg 裁靜音、重試機制、靜音檔產生、mp3 concat。
+共用底層模組：TTS 合成、ffmpeg 裁靜音、重試機制、靜音檔產生、mp3 concat、音檔長度量測。
 
 供 podcast.py 與 narration.py（及其他需要 TTS 的腳本）共同引用。
 """
@@ -81,3 +81,28 @@ def concat_mp3(parts: list[Path], output_path: Path) -> None:
              "-i", str(concat_list), "-c", "copy", str(output_path)],
             check=True, capture_output=True,
         )
+
+
+def probe_duration(path: Path) -> float:
+    """用 ffprobe 取得音訊/影片秒數。"""
+    result = subprocess.run(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=nk=1:nw=1",
+            str(path),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return float(result.stdout.strip())
+
+
+def default_timing_path(output_path: Path) -> Path:
+    """由輸出 mp3 推導 timing JSON 路徑：episode.mp3 -> episode_timing.json。"""
+    return output_path.with_name(f"{output_path.stem}_timing.json")

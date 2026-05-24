@@ -1,20 +1,52 @@
 ---
 name: audio
-description: 把腳本轉成 mp3 音檔。支援雙人對談（[曉臻]/[雲哲] 格式）與說書人獨白（[說書人] 格式）兩種模式。當使用者說「生成音檔」「轉成 mp3」「跑 podcast」「合成語音」「跑有聲書」「合成獨白」「生成說書人音檔」時觸發。
+description: 把腳本轉成 mp3 音檔與 TTS timing JSON。支援雙人對談（[曉臻]/[雲哲] 格式）與說書人獨白（[說書人] 格式）兩種模式。當使用者說「生成音檔」「轉成 mp3」「跑 podcast」「合成語音」「跑有聲書」「合成獨白」「生成說書人音檔」時觸發。
 ---
 
 # 工作流程
 
 讀取腳本格式後，自動分派到對應的合成腳本：
 
-- **對談模式**：呼叫 `scripts/podcast.py`，用 Edge TTS 合成曉臻/雲哲兩個聲音，ffmpeg 裁掉頭尾靜音後合併成單一 mp3
-- **說書人模式**：呼叫 `scripts/narration.py`，用 Edge TTS 合成 HsiaoChen 單聲，ffmpeg 裁掉頭尾靜音後合併成單一 mp3
+- **對談模式**：呼叫 `scripts/podcast.py`，用 Edge TTS 合成曉臻/雲哲兩個聲音，ffmpeg 裁掉頭尾靜音後合併成單一 mp3，並輸出 timing JSON
+- **說書人模式**：呼叫 `scripts/narration.py`，用 Edge TTS 合成 HsiaoChen 單聲，ffmpeg 裁掉頭尾靜音後合併成單一 mp3，並輸出 timing JSON
 
 ```bash
 # 對談
-python3 <skill-dir>/scripts/podcast.py "對話腳本.txt" -o "輸出.mp3"
+python3 <skill-dir>/scripts/podcast.py "對話腳本.txt" -o "episode.mp3"
 # 說書人
-python3 <skill-dir>/scripts/narration.py "獨白腳本.txt" -o "輸出.mp3"
+python3 <skill-dir>/scripts/narration.py "獨白腳本.txt" -o "episode.mp3"
+```
+
+預設會由 mp3 檔名自動推導 timing 路徑，例如 `episode.mp3` 會產生 `episode_timing.json`。進階用法可用 `--timing custom_timing.json` 覆蓋。
+
+## Timing 輸出
+
+正流程必須輸出 `episode_timing.json`，供 `caption` skill 產生字幕。不要在正流程使用 Whisper，也不要用字數估算 fallback。
+
+Timing 來源是 TTS 實際合成後的段落音檔長度：
+
+1. 每段台詞由 Edge TTS 合成成暫時 mp3。
+2. ffmpeg 裁掉頭尾靜音。
+3. 用 `ffprobe` 量裁切後段落 mp3 的實際 duration。
+4. 加上段落間 `PAUSE_SECONDS`，累加出每段 `start/end`。
+5. concat 成 episode mp3，同時寫出 `episode_timing.json`。
+
+格式：
+
+```json
+{
+  "audio": "episode.mp3",
+  "duration": 360.4,
+  "timingSource": "tts-segment",
+  "segments": [
+    {
+      "start": 0.0,
+      "end": 3.21,
+      "speaker": "說書人",
+      "text": "今天要說的是一個很小的測試。"
+    }
+  ]
+}
 ```
 
 ## 格式偵測
@@ -35,7 +67,7 @@ python3 <skill-dir>/scripts/narration.py "獨白腳本.txt" -o "輸出.mp3"
 | 曉臻聲音 | `zh-TW-HsiaoChenNeural` | 台灣女聲 |
 | 雲哲聲音 | `zh-TW-YunJheNeural` | 台灣男聲 |
 | 語速 | `-10%` | 鎖定避免忽快忽慢，注意只接受兩位數百分比 |
-| 段落間停頓 | `0.25` 秒 | 裁掉 TTS 自帶頭尾靜音後再補的停頓 |
+| 段落間停頓 | `0.25` 秒 | 裁掉 TTS 自帶頭尾靜音後再補的停頓；需反映在 timing JSON |
 
 ### 說書人模式（narration.py）
 
@@ -43,7 +75,7 @@ python3 <skill-dir>/scripts/narration.py "獨白腳本.txt" -o "輸出.mp3"
 |------|--------|------|
 | 說書人聲音 | `zh-TW-HsiaoChenNeural` | 台灣女聲（HsiaoChen） |
 | 語速 | `-10%` | 鎖定避免忽快忽慢，注意只接受兩位數百分比 |
-| 段落間停頓 | `0.25` 秒 | 裁掉 TTS 自帶頭尾靜音後再補的停頓 |
+| 段落間停頓 | `0.25` 秒 | 裁掉 TTS 自帶頭尾靜音後再補的停頓；需反映在 timing JSON |
 
 ## 腳本格式要求
 
@@ -72,8 +104,9 @@ python3 <skill-dir>/scripts/narration.py "獨白腳本.txt" -o "輸出.mp3"
 1. 確認腳本檔案存在，讀取內容進行格式偵測
 2. 依偵測結果選擇 `podcast.py`（對談）或 `narration.py`（說書人）
 3. 顯示生成進度（會列出每段台詞的前 30 字）
-4. 完成後告知使用者輸出檔位置與大小
-5. 如果使用者有設定 Slack（`soap-chat:slack`），可詢問是否要直接發送
+4. 完成後告知使用者 mp3、timing JSON 的位置與大小
+5. 如果 timing JSON 沒有生成，視為失敗，不進入 `caption` / `video` 步驟
+6. 如果使用者有設定 Slack（`soap-chat:slack`），可詢問是否要直接發送
 
 ## 常見問題
 
