@@ -30,10 +30,19 @@ description: 把 podcast mp3、`episode_structure.json` 與字幕做成完整 MP
 ```bash
 npx --yes hyperframes@0.6.40 init "<project_dir>"
 cd "<project_dir>"
-npx --yes hyperframes@0.6.40 render -o "../<output>.mp4" --fps 12 --quality draft
+npx --yes hyperframes@0.6.40 render -o "../<output>.mp4" --fps 6 --quality draft
 ```
 
-原型先用 `--fps 12 --quality draft`；正式輸出再用 `--fps 24 --quality standard/high`。
+Render profile：
+
+| profile | 用途 | 指令 |
+|---|---|---|
+| `preview` | layout smoke test，只能輸出短片段或內部檢查，不是正式交付 | `--fps 4 --quality draft` |
+| `draft` | 預設完整輸出 | `--fps 6 --quality draft` |
+| `final` | draft 通過且 render 速度足夠時才使用 | `--fps 12 --quality standard` |
+| `emergency-preview` | 只用來排查極慢 render，不得稱為 final | `--fps 1 --quality draft` |
+
+不得把 1fps 影片當成正式 MP4。若 draft render 太慢，先簡化 DOM、合併字幕、降低 timed clip 數；仍不行才改用 `preview` 或回報瓶頸。
 
 ## 執行邊界
 
@@ -47,6 +56,46 @@ npx --yes hyperframes@0.6.40 render -o "../<output>.mp4" --fps 12 --quality draf
 - project 建立、HTML 產生與 `npm run check` 目標 3 分鐘內完成；超過 5 分鐘要停下回報。
 - draft render 目標 8 分鐘內完成；超過 10 分鐘要中止並回報卡在哪一步。
 - 重跑前刪除舊 `<episode_slug>_video/` 與舊 MP4，避免沿用舊 layout。
+
+## 效能預算
+
+長 podcast 的瓶頸通常是 Chrome frame capture，不是 ffmpeg。Render 前必須先控制 composition 複雜度。
+
+預估項目：
+
+- `estimatedFrames = audioDurationSeconds * renderFps`
+- `timedClipCount = document.querySelectorAll('.clip').length`
+- `captionClipCount = document.querySelectorAll('.caption.clip').length`
+
+產生 `index.html` 後，必須在回報或 log 中列出：
+
+```text
+duration=<seconds>
+profile=<preview|draft|final>
+fps=<fps>
+estimatedFrames=<duration*fps>
+timedClipCount=<all .clip>
+captionClipCount=<caption .clip>
+nonCaptionClipCount=<timedClipCount-captionClipCount>
+```
+
+硬性預算：
+
+| 項目 | 上限 |
+|---|---|
+| draft `estimatedFrames` | 4000 |
+| total timed clips | 250 |
+| video caption clips | 180 |
+| non-caption clips | `ideaBeats * 3 + chapterTransitions + introOutro` |
+
+超過預算時，不得直接 render。先依序處理：
+
+1. 合併 video captions 到 3~5 秒一段。
+2. 把同一 beat 的多個 visual clips 收斂成一個主要 beat clip。
+3. 移除裝飾性 overlay、shadow、progress 重複層。
+4. 若 `estimatedFrames` 仍超過 4000，draft 改為 4fps 並在回報中標記。
+
+`timeline_track_too_dense` 對完整影片不是可接受狀態。若只是在短 prototype 出現可暫時記錄；完整 episode render 前必須降 clip 數或拆成更少主 clip 的 layout。
 
 ## Composition 契約
 
@@ -66,6 +115,8 @@ npx --yes hyperframes@0.6.40 render -o "../<output>.mp4" --fps 12 --quality draf
 - 不重複顯示完整 episode title；panel title 優先用短 chapter title。
 - 文字容器要有 `overflow: hidden`、縮字或截短策略。
 - 禁止巢狀 card、未限制寬高的大字、未設 track 的重疊 clip。
+- 禁止昂貴 CSS：`filter`、`backdrop-filter`、大面積 blur、動畫 gradient、大型 box-shadow、多層半透明 overlay。
+- 若要用漸層，只能作為單層靜態背景；不得讓多個大型透明層疊在主畫布上。
 
 建議安全區：
 
@@ -82,12 +133,15 @@ npx --yes hyperframes@0.6.40 render -o "../<output>.mp4" --fps 12 --quality draf
 影片以 `ideaBeats` 為動畫單位，不以字幕逐句切畫面。
 
 - 每個 beat 對應一個敘述內容。
+- 每個 beat 預設只有一個主要 timed visual clip；最多 3 個 non-caption timed clips。
+- beat 內的 headline、summary、diagram、keyword、progress 要在同一個 visual clip 裡用 CSS/GSAP 內部動畫分批出現。
 - beat 開始時 headline 或主 keyword 要有進場動畫。
 - beat 內 elements 要逐步 reveal、highlight、pop、slide 或 stack。
 - 不得把整個 beat 的所有文字放進同一個 scene 一次顯示。
 - 同一 beat 的 visual elements 要沿 beat duration 或 caption anchors 分散，不能集中在開頭 2~4 秒。
 - visual elements 必須在原本 visual panel 內做動畫；不得在 panel 外額外產生重複 chip、badge、tag 或 debug-like overlay。
 - 若 panel 內已有某關鍵詞，不得在畫面其他位置複製同一關鍵詞來假裝動畫。
+- 不得為了做動畫把同一關鍵詞複製成另一個 timed clip；應對原本元素加 class 或 data-step。
 - GSAP timeline 必須使用每個 clip 的實際 `data-start`，不能只有一條從 0 秒開始的全域動畫。
 - 每個 chapter 切換要有 transition 或 crossfade，不得硬切黑畫面。
 
@@ -104,7 +158,8 @@ npx --yes hyperframes@0.6.40 render -o "../<output>.mp4" --fps 12 --quality draf
 ## 字幕規則
 
 - 讀取 `caption_segments.json.captions`。
-- 每段字幕是 timed `.clip`，依 caption `start/end` 計算。
+- SRT 或字幕資料可保留細粒度；video burned-in captions 必須先合併成 3~5 秒一段，避免 clip 過多。
+- 每段 video 字幕是 timed `.clip`，依合併後 caption `start/end` 計算。
 - 字幕固定單行，不插入 `<br>` 或換行。
 - 過長時優先縮短文字、降低字級、加寬字幕框或 `text-overflow: ellipsis`。
 - 字幕底板高度以單行為準，避免大黑底遮住畫面。
@@ -114,13 +169,16 @@ npx --yes hyperframes@0.6.40 render -o "../<output>.mp4" --fps 12 --quality draf
 
 Render 前：
 
-- 非字幕 timed clips 至少約為 `ideaBeats 數 * 5`。
+- 使用 `draft` profile 前，`estimatedFrames <= 4000`。
+- `timedClipCount <= 250`，`captionClipCount <= 180`。
+- 非字幕 timed clips 不超過 `ideaBeats * 3 + chapterTransitions + introOutro`。
 - 每個 beat 至少有 headline、summary、visual panel、progress 或等效層。
 - 每個 beat 中後段仍有可感知變化。
 - `.clip` 沒被覆蓋成 `position: relative`。
-- headline、summary、panel、visual elements 不共用同一個 timed clip 一次顯示。
+- headline、summary、panel、visual elements 可共用同一個 beat clip，但必須有內部分步動畫，不能一次顯示。
 - 不存在 panel 外的重複關鍵詞 chip / badge / tag。
 - caption 內容不含 `<br>`，CSS 是單行 `white-space: nowrap`。
+- CSS 不含 `filter`、`backdrop-filter`、大面積 blur 或動畫 gradient。
 
 執行：
 
@@ -128,7 +186,7 @@ Render 前：
 npm run check
 ```
 
-`text_box_overflow`、元素重疊、黑畫面、音訊缺失都不能接受。`timeline_track_too_dense` 可在原型階段接受。
+`text_box_overflow`、元素重疊、黑畫面、音訊缺失都不能接受。完整影片不得接受 `timeline_track_too_dense`。
 
 ## 驗證
 
@@ -149,5 +207,5 @@ ffmpeg -hide_banner -nostats -i "episode.mp4" -vf blackdetect=d=0.2:pic_th=0.98 
 - 畫面重疊：先檢查 `.clip` positioning，再查各 layer 安全區。
 - 動畫只在開頭：檢查 element timing 是否分散到 beat 中後段。
 - 切主題黑屏：加入 0.5~1.2 秒 transition overlay 或 crossfade。
-- 超過時間預算：停止命令並回報，不能改走自製逐幀 pipeline。
+- 超過時間預算：停止命令，先降 DOM/clip/caption 複雜度，再改 4fps draft；不得直接改 1fps 當交付，也不能改走自製逐幀 pipeline。
 - root-level `scripts/`、`node_modules/` 或 `package.json`：視為流程錯誤，刪除後重做 HyperFrames project。
