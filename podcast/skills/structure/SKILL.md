@@ -1,30 +1,30 @@
 ---
 name: structure
-description: 把 podcast 腳本、分析摘要或 mp3 整理成影片結構 JSON。當使用者說「產生影片結構」「做 storyboard」「規劃 podcast 畫面」「整理成影片章節」「產生 visual plan」時觸發。
+description: 把 podcast 腳本、摘要、字幕或 mp3 整理成 `episode_structure.json`，供影片生成使用。
 ---
 
 # 工作流程
 
-把 podcast-first 的內容整理成 `episode_structure.json`，供 `video` skill 轉成 MP4。這個 skill 只規劃內容與畫面結構，不 render 影片。
+產生 podcast-first 的影片結構 JSON。這個 skill 只規劃章節與畫面節奏，不 render 影片。
 
 ## 輸入
 
-可接受以下任一組輸入：
+可接受任一組：
 
-- podcast 腳本：`[曉臻]/[雲哲]` 或 `[說書人]` 格式
+- podcast 腳本：`[曉臻]/[雲哲]` 或 `[說書人]`
 - podcast mp3：已由 `audio` skill 產生
-- 字幕資料：`caption_segments.json`（若已由 `caption` skill 產生）
+- 字幕資料：`caption_segments.json`
 - 來源摘要：文章、YouTube 分析總結、Markdown notes
 
-若有 mp3，先用 `ffprobe` 取得實際 duration。若沒有 mp3，用腳本段落估算時長，但要在輸出中標記 `timingSource: "estimated"`。
+有 mp3 時必須用 `ffprobe` 取得實際 duration；沒有 mp3 才能估算，並標記 `timingSource: "estimated"`。
 
 ```bash
 ffprobe -v error -show_entries format=duration -of default=nk=1:nw=1 "episode.mp3"
 ```
 
-## 輸出格式
+## 輸出
 
-預設輸出到當前目錄的 `episode_structure.json`。JSON 必須可被機器穩定讀取，不要包含註解。
+預設輸出 `episode_structure.json`。JSON 不得包含註解。
 
 ```json
 {
@@ -44,43 +44,63 @@ ffprobe -v error -show_entries format=duration -of default=nk=1:nw=1 "episode.mp
         "summary": "先建立這集的核心問題。",
         "template": "intro",
         "headline": "成長不是靠單一爆款",
-        "bullets": []
+        "bullets": [],
+        "ideaBeats": [
+          {
+            "start": 0,
+            "end": 14,
+            "idea": "先建立本集核心問題",
+            "visual": "headline-reveal",
+            "elements": ["核心問題", "為什麼重要"]
+          }
+        ]
       }
     ]
   }
 }
 ```
 
-## 欄位規則
+## 結構契約
 
-- `title`：影片標題，避免過長，適合 YouTube 顯示
-- `mode`：`talk`、`narration` 或 `unknown`
-- `audio`：mp3 路徑；若尚未生成，填 `null`
-- `duration`：秒數；有 mp3 時使用實際音訊長度
-- `timingSource`：`audio` 或 `estimated`
-- `visualRole`：固定使用 `companion`，表示畫面輔助 podcast，而不是主敘事
-- `captions`：字幕 JSON 路徑；若沒有字幕，填 `null`
-- `chapters`：依音訊長度調整；短集 4~6 個，中長集 6~12 個
-- `template`：只能使用 `intro`、`chapter`、`bullet_points`、`quote`、`recap`
-- `headline`：該段畫面主標，必須短而可讀
-- `bullets`：最多 3 點，每點 20 字以內
+- `duration`：有 mp3 時使用實際秒數。
+- `visualRole`：固定 `companion`，代表畫面輔助 podcast，不取代旁白。
+- `chapters`：4~6 分鐘約 3~5 章；6~10 分鐘約 5~8 章。
+- `template`：只能用 `intro`、`chapter`、`bullet_points`、`quote`、`recap`。
+- `headline`：短而可讀，避免塞完整句。
+- `bullets`：最多 3 點，每點 20 字內。
+- `ideaBeats`：每章 2~5 個，是影片動態的最小敘事單位。
+
+## Idea Beat 規則
+
+- 一個 beat 是一個敘述內容，不是逐句字幕；可是一個小觀點、例子、轉折或結論。
+- 每個 beat 通常 8~25 秒。
+- 必填 `start`、`end`、`idea`、`visual`、`elements`。
+- `idea` 不必逐字等於旁白，但要對應同一段敘述。
+- `elements` 最多 4 個，用於 panel 內逐步 reveal 或 highlight。
+- `visual` 可用：`headline-reveal`、`bullet-reveal`、`keyword-pop`、`contrast-split`、`flow-build`、`quote-focus`、`recap-stack`。
+- beat 時間必須落在所屬 chapter 內；章節時間不可重疊。
+
+## 格式偵測
+
+- 含 `[說書人]` 且不含 `[曉臻]/[雲哲]`：`mode` 使用 `narration`。
+- 含 `[曉臻]` 或 `[雲哲]` 且不含 `[說書人]`：`mode` 使用 `talk`。
+- 兩類標記都出現：停手；V1 不支援混合腳本。
+- 沒有腳本標記時，可依來源摘要產生結構，`mode` 使用 `unknown`。
 
 ## 規劃原則
 
-1. **音訊是主時間軸**：畫面必須跟著 podcast 內容走。
-2. **lunch-break 長度**：預設 12~15 分鐘；短內容 6~10 分鐘；長內容 15~20 分鐘；除非使用者明確指定，不超過 25 分鐘。
-3. **不要逐句換畫面**：一般每 30~90 秒換一次視覺段落；長內容以 chapter 為主，每章可拆 2~4 個 scene。
-4. **固定模板優先**：不要讓 LLM 自由發明複雜版型。
-5. **少字大字**：畫面不是逐字稿，只放章節、重點、短句；字幕由 `caption` skill 管。
-6. **可重跑**：JSON 欄位要穩定，讓 `video` skill 可重複 render。
+- 音訊是主時間軸，畫面跟著 podcast 內容走。
+- 預設 6~8 分鐘；長內容做 8~10 分鐘。除非使用者明確指定，不超過 10 分鐘。
+- 長來源要高密度整理，不逐段翻譯。
+- 成品畫面不得顯示 `0:00-1:20` 這類時間 range。
+- 畫面少字大字；字幕由 `caption` skill 處理。
 
 ## 操作步驟
 
-1. 讀取腳本、摘要與 mp3 路徑。
-2. 若有 mp3，用 `ffprobe` 取得實際長度。
-3. 判斷模式：有 `[說書人]` 為 `narration`，有 `[曉臻]` 或 `[雲哲]` 為 `talk`。
-4. 若有 `caption_segments.json`，用字幕時間輔助切章節。
-5. 依長度切章節：6~10 分鐘約 4~6 章；12~15 分鐘約 6~8 章；15~25 分鐘約 8~12 章。
-6. 為每章選模板並寫 `headline`、`summary`、`bullets`。
-7. 確認章節 `start/end` 覆蓋完整 duration，且不重疊。
-8. 輸出 `episode_structure.json`，並告知下一步可用 `video` skill 產 MP4。
+1. 讀取腳本、摘要、字幕與 mp3。
+2. 取得或估算 duration。
+3. 依格式偵測決定 `mode`；混合腳本要停手。
+4. 用字幕時間輔助切章節。
+5. 產生 chapters、headline、summary、bullets 與 ideaBeats。
+6. 檢查章節覆蓋完整 duration、互不重疊，且 beat 落在章節內。
+7. 輸出 `episode_structure.json`。

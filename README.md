@@ -1,47 +1,131 @@
 # podcast
 
-把文章轉成 Podcast 音檔與 Podcast 影片的 Claude Code plugin，支援雙人對談、說書人獨白，以及用 HyperFrames 產出 YouTube 版 MP4。
+Claude Code plugin for turning articles or YouTube notes into podcast audio and companion MP4 videos.
+
+Supports:
+
+- Two-person talk scripts: `[曉臻]` / `[雲哲]`
+- Single narrator scripts: `[說書人]`
+- MP3 generation with TTS segment timing
+- Captions, visual structure JSON, and HyperFrames MP4 rendering
 
 ## Install
 
 ```bash
-# 1. Add marketplace
 /plugin marketplace add cowbear6598/podcast
-
-# 2. Install plugin
 /plugin install podcast
 ```
 
 ## Skills
 
-| Skill | 用途 |
-|-------|------|
-| `podcast:setup` | 檢查 ffmpeg / edge-tts 安裝環境 |
-| `podcast:talk` | 把文章改寫成 `[曉臻]/[雲哲]` 對話腳本 |
-| `podcast:tell` | 把文章改寫成 `[說書人]` 獨白腳本 |
-| `podcast:audio` | 把腳本合成 mp3 與 TTS timing JSON，支援雙人對談與說書人兩種格式 |
-| `podcast:caption` | 用 TTS timing JSON 產生 transcript、SRT 與字幕時間軸 |
-| `podcast:structure` | 把腳本、摘要與 mp3 整理成影片結構 JSON |
-| `podcast:video` | 把影片結構 JSON 與 mp3 做成完整 MP4 |
+| Skill | Purpose |
+|---|---|
+| `podcast:setup` | Check ffmpeg, Python, and edge-tts |
+| `podcast:talk` | Convert source content into a two-person podcast script |
+| `podcast:tell` | Convert source content into a single-narrator script |
+| `podcast:audio` | Generate mp3 and TTS timing JSON |
+| `podcast:caption` | Generate transcript, SRT, and caption segments |
+| `podcast:structure` | Generate `episode_structure.json` |
+| `podcast:video` | Render a HyperFrames MP4 |
 
 ## Workflow
 
+```text
+# Two-person podcast
+source -> podcast:talk -> script.txt -> podcast:audio -> episode.mp3 + episode_timing.json
+
+# Single-narrator podcast
+source -> podcast:tell -> script.txt -> podcast:audio -> episode.mp3 + episode_timing.json
+
+# Full companion video
+source -> podcast:talk or podcast:tell -> podcast:audio -> podcast:caption -> podcast:structure -> podcast:video -> episode.mp4
 ```
-# 雙人對談
-文章 → podcast:talk → 對話腳本.txt → podcast:audio → mp3
 
-# 說書人獨白
-文章 → podcast:tell → 說書腳本.txt → podcast:audio → mp3
+## Commands
 
-# Podcast 影片
-文章 → podcast:talk/tell → 腳本.txt → podcast:audio → mp3 + timing → podcast:caption → 字幕 → podcast:structure → episode_structure.json → podcast:video → mp4
+Claude Code triggers skills from natural language. These examples show the intended commands and expected outputs.
+
+### Setup
+
+```text
+檢查 podcast 環境
+```
+
+Runs `podcast:setup` and checks `ffmpeg`, Python, and `edge-tts`.
+
+### Create A Script
+
+```text
+把這篇文章改成雙人 podcast 腳本
+```
+
+Runs `podcast:talk` and outputs a `[曉臻]/[雲哲]` script.
+
+```text
+把這份內容改成說書人獨白
+```
+
+Runs `podcast:tell` and outputs a `[說書人]` script.
+
+### Generate Audio
+
+```text
+把 script.txt 合成 podcast mp3
+```
+
+Runs `podcast:audio` and outputs:
+
+- `episode.mp3`
+- `episode_timing.json`
+
+### Generate Captions
+
+```text
+用 episode_timing.json 產生字幕
+```
+
+Runs `podcast:caption` and outputs:
+
+- `transcript.json`
+- `subtitles.srt`
+- `caption_segments.json`
+
+### Generate Video Structure
+
+```text
+幫這集 podcast 產生影片結構
+```
+
+Runs `podcast:structure` and outputs `episode_structure.json`.
+
+### Render MP4
+
+```text
+把 episode_structure.json 和 episode.mp3 做成完整 mp4
+```
+
+Runs `podcast:video` and outputs:
+
+- `<episode_slug>_video/`
+- `<episode_slug>.mp4`
+
+### Full Automated Flow
+
+```text
+把這份 YouTube 分析做成說書人 podcast，產出字幕、影片結構和完整 mp4
+```
+
+Expected flow:
+
+```text
+podcast:tell -> podcast:audio -> podcast:caption -> podcast:structure -> podcast:video
 ```
 
 ## License
 
 Apache License 2.0 — Copyright 2026 [cowbear6598](https://github.com/cowbear6598).
 
-任何使用、修改、再發布請保留 `LICENSE` 與 `NOTICE` 檔案，並標註作者 cowbear6598。
+Keep `LICENSE` and `NOTICE` when using, modifying, or redistributing this project.
 
 ## Acknowledgements
 

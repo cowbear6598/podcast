@@ -1,20 +1,16 @@
 ---
 name: setup
-description: 檢查 podcast 所需的工具是否已安裝（Python edge-tts 套件、ffmpeg），未安裝則提供安裝指引
+description: 檢查 podcast 所需工具是否已安裝：ffmpeg、Python 3.8+、edge-tts。
 ---
 
 # 工作流程
 
-依序檢查以下工具，未安裝則顯示安裝指令：
+檢查本機環境，缺少工具時提供安裝指令。
 
 | 工具 | 檢查方式 | 安裝指令 |
-|------|---------|---------|
-| ffmpeg | `which ffmpeg` | `brew install ffmpeg`（Mac）或 `sudo apt install ffmpeg`（Ubuntu）|
-| Python 3.8+ | `python3 --version` | 系統內建或 `brew install python` |
-| edge-tts | `python3 -c "import edge_tts"` | `pip install edge-tts`（建議在 venv 內安裝）|
+|---|---|---|
+| ffmpeg | `which ffmpeg` | macOS: `brew install ffmpeg`；Ubuntu: `sudo apt install ffmpeg` |
+| Python 3.8+ | `python3 --version` | macOS: `brew install python`；Ubuntu: `sudo apt install python3` |
+| edge-tts | `python3 -c "import edge_tts"` | `pip install edge-tts`，建議在 venv 內安裝 |
 
-# 補充
-
-- `edge-tts` 走微軟 Edge 內部 API，免費、不需 API key
-- 僅供個人/內部使用，不建議對外商用（會違反微軟 ToS）
-- 公司內部分享為灰色地帶，實務上風險低
+`edge-tts` 不需要 API key。

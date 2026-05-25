@@ -1,35 +1,53 @@
 ---
 name: audio
-description: 把腳本轉成 mp3 音檔與 TTS timing JSON。支援雙人對談（[曉臻]/[雲哲] 格式）與說書人獨白（[說書人] 格式）兩種模式。當使用者說「生成音檔」「轉成 mp3」「跑 podcast」「合成語音」「跑有聲書」「合成獨白」「生成說書人音檔」時觸發。
+description: 把腳本轉成 mp3 與 TTS timing JSON。支援 `[曉臻]/[雲哲]` 雙人對談與 `[說書人]` 獨白。
 ---
 
 # 工作流程
 
-讀取腳本格式後，自動分派到對應的合成腳本：
+讀取腳本標記，自動選擇合成腳本：
 
-- **對談模式**：呼叫 `scripts/podcast.py`，用 Edge TTS 合成曉臻/雲哲兩個聲音，ffmpeg 裁掉頭尾靜音後合併成單一 mp3，並輸出 timing JSON
-- **說書人模式**：呼叫 `scripts/narration.py`，用 Edge TTS 合成 HsiaoChen 單聲，ffmpeg 裁掉頭尾靜音後合併成單一 mp3，並輸出 timing JSON
+- `[曉臻]/[雲哲]` → `scripts/podcast.py`
+- `[說書人]` → `scripts/narration.py`
 
 ```bash
-# 對談
 python3 <skill-dir>/scripts/podcast.py "對話腳本.txt" -o "episode.mp3"
-# 說書人
 python3 <skill-dir>/scripts/narration.py "獨白腳本.txt" -o "episode.mp3"
 ```
 
-預設會由 mp3 檔名自動推導 timing 路徑，例如 `episode.mp3` 會產生 `episode_timing.json`。進階用法可用 `--timing custom_timing.json` 覆蓋。
+預設會同步輸出 `episode_timing.json`。可用 `--timing custom.json` 指定 timing 路徑。
 
-## Timing 輸出
+## 輸入
 
-正流程必須輸出 `episode_timing.json`，供 `caption` skill 產生字幕。不要在正流程使用 Whisper，也不要用字數估算 fallback。
+- 必要：`.txt` 腳本
+- 對談腳本只能包含 `[曉臻]`、`[雲哲]`
+- 獨白腳本只能包含 `[說書人]`
 
-Timing 來源是 TTS 實際合成後的段落音檔長度：
+## 輸出
 
-1. 每段台詞由 Edge TTS 合成成暫時 mp3。
-2. ffmpeg 裁掉頭尾靜音。
-3. 用 `ffprobe` 量裁切後段落 mp3 的實際 duration。
-4. 加上段落間 `PAUSE_SECONDS`，累加出每段 `start/end`。
-5. concat 成 episode mp3，同時寫出 `episode_timing.json`。
+- `episode.mp3`
+- `episode_timing.json`
+
+Timing JSON 是後續 `caption` skill 的必要輸入；若沒有生成，視為失敗，不進入字幕或影片步驟。
+
+## 格式偵測
+
+- 含 `[說書人]` 且不含 `[曉臻]/[雲哲]`：呼叫 `narration.py`
+- 含 `[曉臻]` 或 `[雲哲]` 且不含 `[說書人]`：呼叫 `podcast.py`
+- 兩類標記都出現：停手，V1 不支援混合腳本
+- 沒有任何標記：停手，要求先用 `talk` 或 `tell` 產生腳本
+
+## Timing 契約
+
+正流程只使用 TTS segment timing，不使用 Whisper，也不使用字數估算 fallback。
+
+Timing 來源：
+
+1. Edge TTS 逐段合成。
+2. ffmpeg 裁掉段落頭尾靜音。
+3. ffprobe 量每段實際 duration。
+4. 累加段落時間與 `PAUSE_SECONDS`。
+5. 合併 mp3，同步寫出 timing JSON。
 
 格式：
 
@@ -49,69 +67,24 @@ Timing 來源是 TTS 實際合成後的段落音檔長度：
 }
 ```
 
-## 格式偵測
-
-讀取腳本檔後，依照以下規則判斷要呼叫哪個腳本：
-
-- 若含 `[說書人]` 且**無** `[曉臻]`/`[雲哲]` → 呼叫 `narration.py`（說書人獨白模式）
-- 若含 `[曉臻]` 或 `[雲哲]` 且**無** `[說書人]` → 呼叫 `podcast.py`（雙人對談模式）
-- 若兩類標記**都出現** → 停手，告知使用者：V1 不支援混合腳本，請確認腳本只使用其中一種格式
-- 若兩類標記**都沒有** → 告知使用者：腳本需要 `[曉臻]/[雲哲]` 標記（對談）或 `[說書人]` 標記（獨白）
-
 ## 預設設定
 
-### 對談模式（podcast.py）
-
-| 參數 | 預設值 | 說明 |
-|------|--------|------|
-| 曉臻聲音 | `zh-TW-HsiaoChenNeural` | 台灣女聲 |
-| 雲哲聲音 | `zh-TW-YunJheNeural` | 台灣男聲 |
-| 語速 | `-10%` | 鎖定避免忽快忽慢，注意只接受兩位數百分比 |
-| 段落間停頓 | `0.25` 秒 | 裁掉 TTS 自帶頭尾靜音後再補的停頓；需反映在 timing JSON |
-
-### 說書人模式（narration.py）
-
-| 參數 | 預設值 | 說明 |
-|------|--------|------|
-| 說書人聲音 | `zh-TW-HsiaoChenNeural` | 台灣女聲（HsiaoChen） |
-| 語速 | `-10%` | 鎖定避免忽快忽慢，注意只接受兩位數百分比 |
-| 段落間停頓 | `0.25` 秒 | 裁掉 TTS 自帶頭尾靜音後再補的停頓；需反映在 timing JSON |
-
-## 腳本格式要求
-
-**對談腳本**（podcast.py）：必須使用 `[曉臻]` 和 `[雲哲]` 標記說話者：
-
-```
-[曉臻] 大家好...
-
-[雲哲] 我是雲哲...
-```
-
-**說書人腳本**（narration.py）：必須使用 `[說書人]` 標記段落：
-
-```
-[說書人] 今天要說的是一件關於 AI 的事。
-
-[說書人] 這件事大概從兩三年前開始發酵。
-```
-
-如使用者提供的是文章而非腳本：
-- 想要雙人對談 → 先呼叫 `talk` skill 改寫成 `[曉臻]/[雲哲]` 格式
-- 想要說書人獨白 → 先呼叫 `tell` skill 改寫成 `[說書人]` 格式
+| 模式 | 腳本 | 聲音 | 語速 | 段落停頓 |
+|---|---|---|---|---|
+| 對談 | `podcast.py` | 曉臻 `zh-TW-HsiaoChenNeural`；雲哲 `zh-TW-YunJheNeural` | `-10%` | `0.25s` |
+| 獨白 | `narration.py` | 說書人 `zh-TW-HsiaoChenNeural` | `-10%` | `0.25s` |
 
 ## 操作步驟
 
-1. 確認腳本檔案存在，讀取內容進行格式偵測
-2. 依偵測結果選擇 `podcast.py`（對談）或 `narration.py`（說書人）
-3. 顯示生成進度（會列出每段台詞的前 30 字）
-4. 完成後告知使用者 mp3、timing JSON 的位置與大小
-5. 如果 timing JSON 沒有生成，視為失敗，不進入 `caption` / `video` 步驟
-6. 如果使用者有設定 Slack（`soap-chat:slack`），可詢問是否要直接發送
+1. 確認腳本存在。
+2. 依格式偵測選擇合成腳本。
+3. 執行合成並顯示每段前 30 字作為進度。
+4. 確認 mp3 與 timing JSON 都已產生。
+5. 回報輸出路徑、檔案大小與下一步。
 
 ## 常見問題
 
-- **語速還是忽快忽慢** → Edge TTS 限制，已用 `-10%` 鎖定，極端情況改 `_core.py` 中的 `RATE = "-15%"`（影響兩個腳本）
-- **停頓太久/太短** → 改 `_core.py` 中的 `PAUSE_SECONDS`，建議範圍 `0.1` ~ `0.4`（影響兩個腳本）
-- **個位數百分比報錯** → Edge TTS bug，`RATE` 不可用 `-5%`，要 `-10%` 或 `+0%`
-- **無音訊回傳** → 通常是網路問題或聲音名稱拼錯；podcast.py 與 narration.py 都有 fallback 候選聲音，失敗會自動換下一個
-- **誤用腳本格式** → 兩個腳本都有保護：podcast.py 偵測到 `[說書人]` 會主動提示改用 narration.py，narration.py 偵測到 `[曉臻]/[雲哲]` 會主動提示改用 podcast.py
+- 語速調整：改 `_core.py` 的 `RATE`，需使用 `-10%` 或 `+0%` 這類兩位數百分比。
+- 段落停頓：改 `_core.py` 的 `PAUSE_SECONDS`，建議 `0.1` 到 `0.4`。
+- 無音訊：通常是網路或 voice 名稱問題；腳本會依 fallback 聲音重試。
+- 腳本誤用：`podcast.py` 與 `narration.py` 都會偵測錯誤格式並提示改用另一個腳本。
