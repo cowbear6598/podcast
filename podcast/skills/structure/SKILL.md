@@ -45,6 +45,18 @@ ffprobe -v error -show_entries format=duration -of default=nk=1:nw=1 "episode.mp
         "template": "intro",
         "headline": "成長不是靠單一爆款",
         "bullets": [],
+        "topicSegments": [
+          {
+            "start": 0,
+            "end": 42,
+            "label": "核心問題",
+            "headline": "成長不是靠單一爆款",
+            "summary": "用一個大主題承載開場鋪陳，而不是每句話換一次畫面。",
+            "visual": "headline-reveal",
+            "elements": ["核心問題", "穩定成長", "觀察框架"],
+            "coveredIdeas": ["先建立本集核心問題"]
+          }
+        ],
         "ideaBeats": [
           {
             "start": 0,
@@ -68,12 +80,26 @@ ffprobe -v error -show_entries format=duration -of default=nk=1:nw=1 "episode.mp
 - `template`：只能用 `intro`、`chapter`、`bullet_points`、`quote`、`recap`。
 - `headline`：短而可讀，避免塞完整句。
 - `bullets`：最多 3 點，每點 20 字內。
-- `ideaBeats`：每章 2~5 個，是影片動態的最小敘事單位。
+- `topicSegments`：影片畫面的主節奏，每章 1~3 個；每個 segment 是一個大主題或標籤。
+- `ideaBeats`：內容拆解來源，可用來幫助寫 summary/elements，但不是影片切換單位。
+
+## Topic Segment 規則
+
+- 一個 topic segment 是一個大主題或標籤，可以承載多個敘述點。
+- 每個 topic segment 通常 30~90 秒；短於 20 秒時要合併到相鄰 topic。
+- 只有 podcast 明確轉到新大主題時才切換 topic；不得因為一句話、一段字幕或一個小例子就切換標籤。
+- 必填 `start`、`end`、`label`、`headline`、`summary`、`visual`、`elements`。
+- `label` 是畫面上的短標籤，不是完整句；同一個 label 要能支撐一段完整講解。
+- `elements` 最多 4 個，用於同一張 topic slide 內的輔助視覺。
+- `coveredIdeas` 可列出此 topic 吸收了哪些 idea beats 或內容點。
+- `visual` 可用：`headline-reveal`、`bullet-reveal`、`keyword-pop`、`contrast-split`、`flow-build`、`quote-focus`、`recap-stack`。
+- topic segment 時間必須落在所屬 chapter 內；章節時間不可重疊。
 
 ## Idea Beat 規則
 
-- 一個 beat 是一個敘述內容，不是逐句字幕；可是一個小觀點、例子、轉折或結論。
-- 每個 beat 通常 8~25 秒。
+- idea beat 是內容分析用的細節，不是畫面切換用的單位。
+- 一個 beat 可以是一個小觀點、例子、轉折或結論，但 video skill 應把多個 beats 合併到 topic segment。
+- 每個 beat 通常 8~25 秒；若它會造成畫面頻繁切換，必須只放入 `coveredIdeas` 或 `summary`，不要做成獨立 topic。
 - 必填 `start`、`end`、`idea`、`visual`、`elements`。
 - `idea` 不必逐字等於旁白，但要對應同一段敘述。
 - `elements` 最多 4 個，用於 panel 內逐步 reveal 或 highlight。
@@ -94,6 +120,7 @@ ffprobe -v error -show_entries format=duration -of default=nk=1:nw=1 "episode.mp
 - 長來源要高密度整理，不逐段翻譯。
 - 成品畫面不得顯示 `0:00-1:20` 這類時間 range。
 - 畫面少字大字；字幕由 `caption` skill 處理。
+- 影片節奏以 `topicSegments` 為準；寧可做靜態 PPT 式大主題頁，也不要讓標籤快速跳動。
 
 ## 操作步驟
 
@@ -101,6 +128,6 @@ ffprobe -v error -show_entries format=duration -of default=nk=1:nw=1 "episode.mp
 2. 取得或估算 duration。
 3. 依格式偵測決定 `mode`；混合腳本要停手。
 4. 用字幕時間輔助切章節。
-5. 產生 chapters、headline、summary、bullets 與 ideaBeats。
-6. 檢查章節覆蓋完整 duration、互不重疊，且 beat 落在章節內。
+5. 產生 chapters、headline、summary、bullets、topicSegments 與 ideaBeats。
+6. 檢查章節覆蓋完整 duration、互不重疊，且 topic/beat 落在章節內。
 7. 輸出 `episode_structure.json`。
