@@ -54,6 +54,20 @@ ffprobe -v error -show_entries format=duration -of default=nk=1:nw=1 "episode.mp
             "summary": "用一個大主題承載開場鋪陳，而不是每句話換一次畫面。",
             "visual": "headline-reveal",
             "elements": ["核心問題", "穩定成長", "觀察框架"],
+            "focusStates": [
+              {
+                "at": 0.15,
+                "cue": "先建立本集核心問題",
+                "focus": ["核心問題"],
+                "effect": "headline-emphasis"
+              },
+              {
+                "at": 0.55,
+                "cue": "為什麼這件事重要",
+                "focus": ["穩定成長", "觀察框架"],
+                "effect": "keyword-highlight"
+              }
+            ],
             "coveredIdeas": ["先建立本集核心問題"]
           }
         ],
@@ -91,9 +105,25 @@ ffprobe -v error -show_entries format=duration -of default=nk=1:nw=1 "episode.mp
 - 必填 `start`、`end`、`label`、`headline`、`summary`、`visual`、`elements`。
 - `label` 是畫面上的短標籤，不是完整句；同一個 label 要能支撐一段完整講解。
 - `elements` 最多 4 個，用於同一張 topic slide 內的輔助視覺。
+- `focusStates`：2~4 個語意焦點狀態，用來讓 video 在同一張 topic slide 內跟著 podcast 講解做低頻動畫。
 - `coveredIdeas` 可列出此 topic 吸收了哪些 idea beats 或內容點。
 - `visual` 可用：`headline-reveal`、`bullet-reveal`、`keyword-pop`、`contrast-split`、`flow-build`、`quote-focus`、`recap-stack`。
 - topic segment 時間必須落在所屬 chapter 內；章節時間不可重疊。
+
+## Focus State 規則
+
+`focusStates` 描述同一個 topic 內「旁白講到哪個概念時，畫面該聚焦哪裡」。它不是切換 topic，也不是新增 slide。
+
+- 每個 topic 建議 2~4 個 focus states；短 topic 可 1~2 個。
+- `at` 用 topic duration 的相對位置，範圍 0~1；常用節奏是 `0.15`、`0.45`、`0.72`、`0.9`。
+- `cue` 是旁白語意提示，不必逐字等於字幕。
+- `focus` 必須引用 topic 的 `headline`、`summary` 或 `elements` 中已存在的文字，不要創造畫面外新標籤。
+- `effect` 只能描述低成本動畫：`headline-emphasis`、`keyword-highlight`、`flow-step`、`contrast-focus`、`quote-emphasis`、`conclusion-highlight`。
+- 相鄰 focus states 應該描述注意力如何自然轉移；避免兩個完全無關的 focus 硬切。
+- 若同一個概念會延續到下一個 state，保留在下一個 `focus` 裡，讓 video 可以維持 active 而不是閃爍退場。
+- `flow-step` 的 focus 應依敘述順序累積，例如 `["開模"]`、`["開模", "樣品"]`、`["開模", "樣品", "量產"]`，讓畫面能 build-forward。
+- focus state 要跟 podcast 語意走，不跟每句字幕走；一段字幕不應造成一次 focus state。
+- 不得用 focus state 製造 `01/7`、progress bar、debug tag 或重複 chip。
 
 ## Idea Beat 規則
 
